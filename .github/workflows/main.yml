@@ -1,0 +1,111 @@
+addEventListener('scheduled', (event) => {
+  event.waitUntil(handleRequest());
+});
+
+addEventListener('fetch', (event) => {
+  return event.respondWith(handleRequest(event.request));
+});
+
+async function handleRequest(request) {
+  const accountEmail ="thienphatdm@gmail.com";
+  const accountId="2c2b05f29d550c2dc98d96d91bc758ff";
+  const apiToken ="RhGrDNgKnxZN6soyahJuYYIuTzuzUObV4BX2m6AW";
+  const domain ="beeb0a28578c.sn.mynetname.net";
+  const ip = await resolveDomain(domain);
+
+  if (ip) {
+    console.log(`The IP address of ${domain} is: ${ip}`);
+    const locationId = await getLocationId(accountId, apiToken, accountEmail);
+    if (locationId) {
+      console.log(`The location ID is: ${locationId}`);
+      const updateResult = await updateLocation(accountId, apiToken, locationId, ip, accountEmail);
+      if (updateResult) {
+        console.log("Update location successful:");
+        console.log(`Location ID: ${updateResult.id}`);
+        console.log(`Name: ${updateResult.name}`);
+        console.log(`IP: ${updateResult.networks[0].network}`);
+        console.log(`Subnet: ${updateResult.networks[0].network.split('/')[1]}`);
+        console.log(`Created At: ${updateResult.created_at}`);
+        console.log(`Updated At: ${updateResult.updated_at}`);
+      } else {
+        console.log("No location data found.");
+      }
+    } else {
+      console.log("No locations found.");
+    }
+  } else {
+    console.log(`Failed to resolve the IP address of ${domain}`);
+  }
+
+  return new Response('Worker execution completed', { status: 200 });
+}
+
+async function resolveDomain(domain) {
+  const apiURL = 'https://dns.google.com/resolve';
+  const queryURL = new URL(apiURL);
+  queryURL.searchParams.append('name', domain);
+  queryURL.searchParams.append('type', 'A');
+
+  const response = await fetch(queryURL);
+  const data = await response.json();
+
+  if (data.Answer instanceof Array && data.Answer.length > 0) {
+    const ipAddresses = data.Answer
+      .filter(answer => answer.type === 1)
+      .map(answer => answer.data);
+    return ipAddresses[0] || null;
+  } else {
+    return null;
+  }
+}
+
+async function getLocationId(accountId, apiToken, accountEmail) {
+
+  const url = `https://api.cloudflare.com/client/v4/accounts/${accountId}/gateway/locations`;
+
+  const response = await fetch(url, {
+    headers: {
+      'Authorization': `Bearer ${apiToken}`,
+      'Content-Type': 'application/json',
+      'X-Auth-Email': accountEmail,
+      'X-Auth-Key': apiToken
+    }
+  });
+
+  if (response.ok) {
+    const data = await response.json();
+    const result = data.result;
+    return result.length > 0 ? result[0].id : null;
+  } else {
+    return null;
+  }
+}
+
+async function updateLocation(accountId, apiToken, locationId, ip, accountEmail) {
+  const url = `https://api.cloudflare.com/client/v4/accounts/${accountId}/gateway/locations/${locationId}`;
+
+  const response = await fetch(url, {
+    method: 'PUT',
+    headers: {
+      'Authorization': `Bearer ${apiToken}`,
+      'Content-Type': 'application/json',
+      'X-Auth-Email': accountEmail,
+      'X-Auth-Key': apiToken
+    },
+    body: JSON.stringify({
+      client_default: true,
+      ecs_support: true,
+      name: 'Router.hAP.ac',
+      networks: [
+        { network: `${ip}/32` }
+      ]
+    })
+  });
+
+  if (response.ok) {
+    const data = await response.json();
+    return data.result || null;
+  } else {
+    return null;
+  }
+}
